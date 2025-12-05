@@ -25,7 +25,7 @@ function initThemeToggle() {
     const themeToggleLogin = document.querySelector('#themeToggle');
     const themeToggleChat = document.querySelector('#themeToggleChat');
     const body = document.body;
-    
+
     // Load saved theme or default to dark mode
     const savedTheme = localStorage.getItem('chatTheme') || 'dark';
     if (savedTheme === 'light') {
@@ -33,38 +33,38 @@ function initThemeToggle() {
     } else {
         body.classList.add('dark-mode');
     }
-    
+
     function toggleTheme() {
         body.classList.toggle('dark-mode');
         const isDark = body.classList.contains('dark-mode');
         localStorage.setItem('chatTheme', isDark ? 'dark' : 'light');
-        
+
         // Update icons visibility
         updateThemeIcons();
     }
-    
+
     function updateThemeIcons() {
         const sunIcons = document.querySelectorAll('.sun-icon');
         const moonIcons = document.querySelectorAll('.moon-icon');
         const isDark = body.classList.contains('dark-mode');
-        
+
         sunIcons.forEach(icon => {
             icon.classList.toggle('hidden', !isDark);
         });
-        
+
         moonIcons.forEach(icon => {
             icon.classList.toggle('hidden', isDark);
         });
     }
-    
+
     // Initial icon update
     updateThemeIcons();
-    
+
     // Add event listeners
     if (themeToggleLogin) {
         themeToggleLogin.addEventListener('click', toggleTheme);
     }
-    
+
     if (themeToggleChat) {
         themeToggleChat.addEventListener('click', toggleTheme);
     }
@@ -73,7 +73,7 @@ function initThemeToggle() {
 function connect(event) {
     username = document.querySelector('#name').value.trim();
 
-    if(username) {
+    if (username) {
         usernamePage.classList.add('hidden');
         chatPage.classList.remove('hidden');
 
@@ -90,14 +90,14 @@ function onConnected() {
     currentSessionId = stompClient.ws._transport.url.split('/')[5]; // Extract from WebSocket URL
     console.log('Connected with session ID:', currentSessionId);
     // END
-    
+
     // Subscribe to the Public Topic
     stompClient.subscribe('/topic/public', onMessageReceived);
 
     // Tell your username to the server
     stompClient.send("/app/chat.addUser",
         {},
-        JSON.stringify({sender: username, type: 'JOIN'})
+        JSON.stringify({ sender: username, type: 'JOIN' })
     );
 
     connectingElement.classList.add('hidden');
@@ -109,7 +109,7 @@ function onError(error) {
 
 function sendMessage(event) {
     var messageContent = messageInput.value.trim();
-    if(messageContent && stompClient) {
+    if (messageContent && stompClient) {
         var chatMessage = {
             sender: username,
             content: messageInput.value,
@@ -131,17 +131,43 @@ function displayBotMessage(message) {
     messageElement.classList.add('bot-message');
 
     // Create bot avatar - BLUE BAR WITH "SERVER BOT" TEXT INSIDE
+    // START - Dynamic Styling
     var avatarElement = document.createElement('div');
     avatarElement.classList.add('avatar', 'bot-avatar');
-    avatarElement.textContent = 'Server Bot';            // TEXT INSIDE THE BLUE BAR
-    avatarElement.style.backgroundColor = '#5865f2';     // Blue background
+
+    var label = 'Server Bot';
+    var bgColor = '#5865f2'; // Default Blue
+
+    if (message.sender === 'System') {
+        bgColor = '#ff9800'; // Orange for Admin Alerts
+        label = 'System';
+    } else if (message.sender === 'DM-Confirmation') {
+        bgColor = '#4caf50'; // Green for DM Sent
+        label = 'Private';
+    } else if (message.sender === 'DM-Received') {
+        bgColor = '#9c27b0'; // Purple for Admin Inbox
+        label = 'Inbox';
+    }
+
+    avatarElement.textContent = label;
+    avatarElement.style.backgroundColor = bgColor;
+    // END
     avatarElement.style.color = 'white !important';      // Force white text
-    avatarElement.style.fontSize = '12px';               
-    avatarElement.style.fontWeight = 'bold';             
-    avatarElement.style.textAlign = 'center';            
-    avatarElement.style.display = 'flex';                
-    avatarElement.style.alignItems = 'center';           
-    avatarElement.style.justifyContent = 'center';       
+    avatarElement.style.fontSize = '12px';
+    avatarElement.style.fontWeight = 'bold';
+    avatarElement.style.textAlign = 'center';
+    avatarElement.style.display = 'flex';
+    avatarElement.style.alignItems = 'center';
+    avatarElement.style.justifyContent = 'center';
+    avatarElement.style.width = '80px';                  // Wider for text to fit
+    avatarElement.style.height = '40px';                 // Bar height
+    avatarElement.style.color = 'white !important';      // Force white text
+    avatarElement.style.fontSize = '12px';
+    avatarElement.style.fontWeight = 'bold';
+    avatarElement.style.textAlign = 'center';
+    avatarElement.style.display = 'flex';
+    avatarElement.style.alignItems = 'center';
+    avatarElement.style.justifyContent = 'center';
     avatarElement.style.width = '80px';                  // Wider for text to fit
     avatarElement.style.height = '40px';                 // Bar height
     // REMOVED borderRadius to keep it as a rectangular bar
@@ -168,10 +194,10 @@ function displayBotMessage(message) {
     footerElement.style.color = '#6c757d';
     footerElement.style.fontStyle = 'italic';
     footerElement.style.marginTop = '4px';
-    
+
     // Create timestamp
-    var timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
+    var timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     // Combine notice and timestamp with - separator
     footerElement.textContent = 'Only you can read this message - ' + timestamp;
 
@@ -188,41 +214,39 @@ function displayBotMessage(message) {
 
 function onMessageReceived(payload) {
     var message = JSON.parse(payload.body);
-    
-    // START - Handle bot messages with session filtering
+
+    // START - Global Message Filtering
+    // If a message has a targetSessionId, it is private.
+    // We must ignore it if it doesn't match our session ID.
+    if (message.targetSessionId && message.targetSessionId !== currentSessionId) {
+        console.log('Ignoring private message for session:', message.targetSessionId);
+        return;
+    }
+
     if (message.type === 'BOT_MESSAGE') {
-        console.log('Received bot message with targetSessionId:', message.targetSessionId);
-        console.log('Current session ID:', currentSessionId);
-        
-        // Only display bot messages targeted to this session
-        if (message.targetSessionId && message.targetSessionId === currentSessionId) {
-            console.log('Bot message is for this session, displaying...');
-            displayBotMessage(message);
-        } else {
-            console.log('Bot message is not for this session, ignoring...');
-        }
-        return; // Don't process further
+        displayBotMessage(message);
+        return;
     }
     // END
-    
+
     var messageElement = document.createElement('li');
 
-    if(message.type === 'JOIN') {
+    if (message.type === 'JOIN') {
         messageElement.classList.add('event-message');
         message.content = message.sender + ' joined the chat';
-        
+
         var eventContent = document.createElement('p');
         eventContent.textContent = message.content;
         messageElement.appendChild(eventContent);
-        
+
     } else if (message.type === 'LEAVE') {
         messageElement.classList.add('event-message');
         message.content = message.sender + ' left the chat';
-        
+
         var eventContent = document.createElement('p');
         eventContent.textContent = message.content;
         messageElement.appendChild(eventContent);
-        
+
     } else {
         messageElement.classList.add('chat-message');
 
@@ -246,7 +270,7 @@ function onMessageReceived(payload) {
 
         var timestampElement = document.createElement('span');
         timestampElement.classList.add('message-timestamp');
-        timestampElement.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        timestampElement.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         messageHeader.appendChild(authorElement);
         messageHeader.appendChild(timestampElement);
@@ -281,7 +305,7 @@ usernameForm.addEventListener('submit', connect, true);
 messageForm.addEventListener('submit', sendMessage, true);
 
 // Add Enter key support for message input
-messageInput.addEventListener('keypress', function(event) {
+messageInput.addEventListener('keypress', function (event) {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage(event);
@@ -289,10 +313,10 @@ messageInput.addEventListener('keypress', function(event) {
 });
 
 // Initialize everything when DOM loads
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     // Auto-focus on username input
     document.querySelector('#name').focus();
-    
+
     // Initialize theme toggle
     initThemeToggle();
 });

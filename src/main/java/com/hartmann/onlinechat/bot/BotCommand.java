@@ -7,7 +7,7 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
  * This interface ensures that future bot commands can be added without modifying
  * the main bot call mechanism, following the Open/Closed Principle.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 public interface BotCommand {

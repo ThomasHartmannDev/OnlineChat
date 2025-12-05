@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * Bot command implementation that provides session and client information.
  * Returns the client ID (session ID) and client name if available.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 @Component

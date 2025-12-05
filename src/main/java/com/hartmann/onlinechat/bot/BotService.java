@@ -12,7 +12,7 @@ import java.util.Optional;
  * This service acts as the main entry point for bot functionality,
  * handling command parsing and execution delegation.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 @Service

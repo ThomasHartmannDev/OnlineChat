@@ -15,7 +15,7 @@ import java.util.Optional;
  * This component automatically discovers all BotCommand implementations
  * and provides a mechanism to resolve commands by name.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 @Component

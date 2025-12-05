@@ -10,7 +10,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * WebSocket configuration for chat application.
  * Configures message broker and STOMP endpoints with support for private messaging.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 @Configuration

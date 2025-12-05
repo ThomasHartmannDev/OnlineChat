@@ -9,7 +9,7 @@ import org.springframework.web.socket.messaging.SessionConnectedEvent;
 /**
  * WebSocket session handler to manage user sessions and provide better logging.
  * 
- * @author AI Assistant
+ * @author Thomas Hartmann
  */
 // START
 @Component
