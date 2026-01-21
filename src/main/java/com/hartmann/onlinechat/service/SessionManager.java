@@ -12,7 +12,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manages active chat sessions and server statistics.
- * Responsible for determining the admin user (first connected) and tracking uptime.
+ * Responsible for determining the admin user (first connected) and tracking
+ * uptime.
  */
 // START
 @Service
@@ -36,18 +37,21 @@ public class SessionManager {
      * The first registered session becomes the admin.
      *
      * @param sessionId The unique session ID
-     * @param username The username associated with the session
+     * @param username  The username associated with the session
      */
     public void addSession(String sessionId, String username) {
         if (!activeSessions.containsKey(sessionId)) {
             activeSessions.put(sessionId, username);
             sessionOrder.add(sessionId);
             log.info("Session added: {}. User: {}. Total sessions: {}", sessionId, username, activeSessions.size());
-            
+
             if (isAdmin(sessionId)) {
                 log.info("Session {} ({}) is now the Admin.", sessionId, username);
                 broadcastAdminChange(username);
             }
+            // START
+            broadcastUserList();
+            // END
         }
     }
 
@@ -61,21 +65,24 @@ public class SessionManager {
         if (activeSessions.containsKey(sessionId)) {
             boolean wasAdmin = isAdmin(sessionId);
             String previousAdminName = activeSessions.get(sessionId);
-            
+
             activeSessions.remove(sessionId);
             sessionOrder.remove(sessionId);
             log.info("Session removed: {}. Remaining sessions: {}", sessionId, activeSessions.size());
 
             if (wasAdmin) {
-                 if (!sessionOrder.isEmpty()) {
+                if (!sessionOrder.isEmpty()) {
                     String newAdminId = sessionOrder.get(0);
                     String newAdminName = activeSessions.get(newAdminId);
                     log.info("Admin disconnected. New Admin is session {} ({})", newAdminId, newAdminName);
                     broadcastAdminChange(newAdminName);
-                 } else {
-                     log.info("All users disconnected. No Admin.");
-                 }
+                } else {
+                    log.info("All users disconnected. No Admin.");
+                }
             }
+            // START
+            broadcastUserList();
+            // END
         }
     }
 
@@ -86,9 +93,67 @@ public class SessionManager {
                 .sender("System")
                 .type(com.hartmann.onlinechat.chat.MessageType.BOT_MESSAGE)
                 .build();
-        
+
         messagingTemplate.convertAndSend("/topic/public", adminMessage);
     }
+
+    // START
+    private void broadcastUserList() {
+        try {
+            java.util.List<String> onlineUsers = new java.util.ArrayList<>(activeSessions.values());
+            java.util.Collections.sort(onlineUsers);
+
+            // Create a special message type or just send the list
+            // We'll reuse ChatMessage but with a special sender/type if needed,
+            // OR we can send a raw map/list if the frontend handles it.
+            // Let's stick to ChatMessage for simplicity, or a wrapper.
+            // Actually, let's send a standard message but with a special header or JSON
+            // body content if we can.
+            // Simpler: Map<String, Object> payload
+
+            Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("type", "USER_LIST");
+            payload.put("users", onlineUsers);
+            // START - Added Admin Info
+            payload.put("admin", getAdminUsername());
+            // END
+
+            messagingTemplate.convertAndSend("/topic/public", payload);
+            log.debug("Broadcasted user list: {}", onlineUsers);
+        } catch (Exception e) {
+            log.error("Failed to broadcast user list", e);
+        }
+    }
+
+    /**
+     * Retrieves the session ID for a given username.
+     * Case-insensitive match.
+     * 
+     * @param username The username to look up
+     * @return The session ID or null if not found
+     */
+    public String getSessionIdByUsername(String username) {
+        if (username == null)
+            return null;
+        String searchName = username.trim().toLowerCase();
+
+        for (Map.Entry<String, String> entry : activeSessions.entrySet()) {
+            if (entry.getValue().toLowerCase().equals(searchName)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns a list of all online usernames.
+     * 
+     * @return List of usernames
+     */
+    public java.util.List<String> getOnlineUsers() {
+        return new java.util.ArrayList<>(activeSessions.values());
+    }
+    // END
 
     /**
      * Checks if the given session ID belongs to the current Admin.
@@ -108,7 +173,7 @@ public class SessionManager {
     public String getAdminSessionId() {
         return sessionOrder.isEmpty() ? null : sessionOrder.get(0);
     }
-    
+
     public String getAdminUsername() {
         String adminId = getAdminSessionId();
         return adminId != null ? activeSessions.get(adminId) : "None";

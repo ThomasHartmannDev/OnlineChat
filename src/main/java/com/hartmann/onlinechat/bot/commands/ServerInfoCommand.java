@@ -25,13 +25,13 @@ public class ServerInfoCommand implements BotCommand {
         sb.append("Connected Clients: ").append(sessionManager.getConnectedClientCount()).append("\n");
         sb.append("Server Uptime:     ").append(sessionManager.getUptime()).append("\n");
         sb.append("Admin User:        ").append(sessionManager.getAdminUsername());
-        
+
         return sb.toString();
     }
 
     @Override
     public String getCommandName() {
-        return "info"; // Matches @server-info requirement via mapping or prefix
+        return "server-info";
     }
 }
 // END

@@ -10,132 +10,141 @@ import org.springframework.stereotype.Controller;
 import com.hartmann.onlinechat.bot.BotService;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Controller for handling WebSocket chat messages.
+ * 
+ * @author Thomas Hartmann
+ */
 @Controller
 @Slf4j
 @RequiredArgsConstructor
 public class ChatController {
-    
+
     private final BotService botService;
     private final SimpMessagingTemplate messagingTemplate;
     // START
     private final com.hartmann.onlinechat.service.SessionManager sessionManager;
+    private final com.hartmann.onlinechat.service.DirectMessageService directMessageService;
     // END
 
     @MessageMapping("/chat.sendMessage")
     @SendTo("/topic/public")
-    public ChatMessage sendMessage(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor){
+    public ChatMessage sendMessage(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor) {
         log.info("Received message: " + chatMessage.getContent());
-        
-        String content = chatMessage.getContent();
-        
-        // START - Handle DM to Admin
-        if (content != null && content.trim().toLowerCase().startsWith("@serveradmin")) {
-            log.info("Processing Admin DM from user: {}", chatMessage.getSender());
-            
-            String adminSessionId = sessionManager.getAdminSessionId();
-            String currentSessionId = headerAccessor.getSessionId();
-            
-            if (adminSessionId != null) {
-                // Strip the "@serveradmin" prefix (12 chars)
-                String dmContent = content.substring(12).trim();
-                
-                // Send to Admin
-                ChatMessage dmMessage = ChatMessage.builder()
-                        .content("DM from " + chatMessage.getSender() + ": " + dmContent)
-                        .sender("DM-Received") // Special sender for styling
-                        .type(MessageType.BOT_MESSAGE) // Render as Bot Message (Bar)
-                        .targetSessionId(adminSessionId)
-                        .build();
-                messagingTemplate.convertAndSend("/topic/public", dmMessage);
-                
-                // Optional: Confirm to Sender
-                ChatMessage confirmation = ChatMessage.builder()
-                        .content("Sent to Admin: " + dmContent)
-                        .sender("DM-Confirmation") // Specific sender for frontend styling
-                        .type(MessageType.BOT_MESSAGE)
-                        .targetSessionId(currentSessionId)
-                        .build();
-                messagingTemplate.convertAndSend("/topic/public", confirmation);
-                
-            } else {
-                // No Admin available
-                ChatMessage errorMessage = ChatMessage.builder()
-                        .content("System: No Admin connected.")
-                        .sender("System")
-                        .type(MessageType.BOT_MESSAGE) // Keep as System or Bot
-                        .targetSessionId(currentSessionId)
-                        .build();
-                messagingTemplate.convertAndSend("/topic/public", errorMessage);
-            }
-            return null; // Don't broadcast
-        }
-        // END
 
-        // START - Modified bot command handling with session targeting
-        // Check if this is a bot command
-        if (botService.isBotCommand(chatMessage.getContent())) {
-            log.info("Processing bot command from user: {} - Command: {}", 
-                    chatMessage.getSender(), chatMessage.getContent());
-            
-            try {
-                // Process the bot command
-                String botResponse = botService.processCommand(chatMessage.getContent(), headerAccessor);
-                log.info("Bot response: {}", botResponse);
-                
-                // Get session ID for targeting
-                String sessionId = headerAccessor.getSessionId();
-                log.info("Targeting bot response to session: {}", sessionId);
-                
-                // Create bot response message with target session
-                ChatMessage botMessage = ChatMessage.builder()
+        String content = chatMessage.getContent();
+
+        // 1. Strict Handling for any message starting with "@"
+        if (content != null && content.trim().startsWith("@")) {
+
+            // A) Bot Command (@server ...)
+            if (botService.isBotCommand(content)) {
+                handleBotCommand(content, chatMessage.getSender(), headerAccessor);
+                return null; // Suppress broadcast
+            }
+
+            // B) Direct Message (@User ...)
+            // Logic: It starts with @, and is NOT a bot command. Must be DM.
+            handleDirectMessage(content, chatMessage.getSender(), headerAccessor);
+            return null; // Suppress broadcast
+        }
+
+        // 2. Regular Public Message
+        return chatMessage;
+    }
+
+    // START - Helper: Handle DM
+    private void handleDirectMessage(String content, String sender, SimpMessageHeaderAccessor headerAccessor) {
+        log.info("Processing Direct Message from user: {}", sender);
+
+        String[] parts = content.trim().split("\\s+", 2);
+        if (parts.length > 0) {
+            String recipientUsername = parts[0].substring(1); // Remove @
+            String messageContent = parts.length > 1 ? parts[1] : "";
+
+            String senderSessionId = headerAccessor.getSessionId();
+
+            directMessageService.sendPrivateMessage(
+                    sender,
+                    senderSessionId,
+                    recipientUsername,
+                    messageContent);
+        }
+    }
+    // END
+
+    // START - Helper: Handle Bot
+    private void handleBotCommand(String content, String sender, SimpMessageHeaderAccessor headerAccessor) {
+        log.info("Processing bot command from user: {} - Command: {}", sender, content);
+        try {
+            String botResponse = botService.processCommand(content, headerAccessor);
+            String sessionId = headerAccessor.getSessionId();
+
+            ChatMessage botMessage = ChatMessage.builder()
                     .content(botResponse)
-                    .sender("Server Bot")
-                    .type(MessageType.BOT_MESSAGE)
-                    .targetSessionId(sessionId) // Only this session should display the message
-                    .build();
-                
-                // Send to public topic, but with session targeting
-                messagingTemplate.convertAndSend("/topic/public", botMessage);
-                
-            } catch (Exception e) {
-                log.error("Error processing bot command", e);
-                
-                String sessionId = headerAccessor.getSessionId();
-                ChatMessage errorMessage = ChatMessage.builder()
-                    .content("Error processing command: " + e.getMessage())
                     .sender("Server Bot")
                     .type(MessageType.BOT_MESSAGE)
                     .targetSessionId(sessionId)
                     .build();
-                
-                messagingTemplate.convertAndSend("/topic/public", errorMessage);
-            }
-            
-            // Return null to prevent broadcasting the original command
-            return null;
+
+            messagingTemplate.convertAndSend("/topic/public", botMessage);
+        } catch (Exception e) {
+            log.error("Error processing bot command", e);
         }
-        // END
-        
-        return chatMessage;
     }
+    // END
 
     @MessageMapping("/chat.addUser")
     @SendTo("/topic/public")
-    public ChatMessage addUser(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor){
-        // Add a username in websocket Session
+    public ChatMessage addUser(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor) {
+        String username = chatMessage.getSender();
         String sessionId = headerAccessor.getSessionId();
-        headerAccessor.getSessionAttributes().put("username", chatMessage.getSender());
-        
-        // START
-        sessionManager.addSession(sessionId, chatMessage.getSender());
+
+        // START - Username Validation
+        // 1. Check for Empty/Null
+        if (username == null || username.trim().isEmpty()) {
+            log.warn("Rejected empty username from session: {}", sessionId);
+            // Send rejection to this session only
+            sendRejection(sessionId, "Username cannot be empty.");
+            return null; // Prevent broadcast
+        }
+
+        // 2. Check for Duplicates
+        // We need a way to check strictly. sessionManager.getSessionIdByUsername works.
+        if (sessionManager.getSessionIdByUsername(username) != null) {
+            log.warn("Rejected duplicate username '{}' from session: {}", username, sessionId);
+            sendRejection(sessionId, "Username '" + username + "' is already taken.");
+            return null; // Prevent broadcast
+        }
         // END
-        
+
+        // Add a username in websocket Session
+        headerAccessor.getSessionAttributes().put("username", username);
+
+        // START
+        sessionManager.addSession(sessionId, username);
+        // END
+
         return chatMessage;
     }
-    
+
+    // START - Helper for sending Rejection
+    private void sendRejection(String sessionId, String reason) {
+        ChatMessage rejection = ChatMessage.builder()
+                .content(reason)
+                .sender("System")
+                .type(MessageType.JOIN_REJECTED)
+                .targetSessionId(sessionId)
+                .build();
+
+        messagingTemplate.convertAndSend("/topic/public", rejection);
+    }
+    // END
+
     // START
     @org.springframework.context.event.EventListener
-    public void handleWebSocketDisconnectListener(org.springframework.web.socket.messaging.SessionDisconnectEvent event) {
+    public void handleWebSocketDisconnectListener(
+            org.springframework.web.socket.messaging.SessionDisconnectEvent event) {
         String sessionId = event.getSessionId();
         sessionManager.removeSession(sessionId);
     }

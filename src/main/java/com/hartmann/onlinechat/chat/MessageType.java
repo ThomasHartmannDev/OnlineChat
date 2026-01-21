@@ -4,5 +4,6 @@ public enum MessageType {
     CHAT,
     JOIN,
     LEAVE,
-    BOT_MESSAGE
+    BOT_MESSAGE,
+    JOIN_REJECTED
 }
